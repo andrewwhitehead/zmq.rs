@@ -1,4 +1,4 @@
-use crate::codec::{CodecError, Message, ZmtpVersion};
+use crate::codec::{CodecError, Message};
 use crate::endpoint::Endpoint;
 use crate::endpoint::EndpointError;
 use crate::task_handle::TaskError;
@@ -10,6 +10,8 @@ pub type ZmqResult<T> = Result<T, ZmqError>;
 
 #[derive(Error, Debug)]
 pub enum ZmqError {
+    #[error("Authentication Error: {0}")]
+    Authentication(&'static str),
     #[error("Endpoint Error: {0}")]
     Endpoint(#[from] EndpointError),
     #[error("Network Error: {0}")]
@@ -42,8 +44,6 @@ pub enum ZmqError {
     Other(&'static str),
     #[error("No message received")]
     NoMessage,
-    #[error("Unsupported ZMTP version")]
-    UnsupportedVersion(ZmtpVersion),
 }
 
 impl From<futures::channel::mpsc::TrySendError<Message>> for ZmqError {

@@ -1,12 +1,14 @@
 use crate::backend::GenericSocketBackend;
 use crate::codec::{Message, ZmqFramedRead};
-use crate::fair_queue::FairQueue;
-use crate::transport::AcceptStopHandle;
-use crate::util::PeerIdentity;
-use crate::{
-    Endpoint, MultiPeerBackend, Socket, SocketEvent, SocketOptions, SocketRecv, SocketType,
-    ZmqMessage, ZmqResult,
+use crate::connection::{
+    MultiPeerBackend, PeerIdentity, Socket, SocketEvent, SocketOptions, SocketRecv, SocketType,
 };
+use crate::endpoint::Endpoint;
+use crate::error::ZmqResult;
+use crate::fair_queue::FairQueue;
+use crate::message::ZmqMessage;
+use crate::transport::AcceptStopHandle;
+
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::StreamExt;

@@ -1,21 +1,22 @@
-use async_trait::async_trait;
-use futures::stream::StreamExt;
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::sync::Arc;
-
 use crate::backend::GenericSocketBackend;
-use crate::codec::*;
+use crate::codec::{Message, ZmqFramedRead};
+use crate::connection::{
+    MultiPeerBackend, PeerIdentity, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv,
+    SocketSend, SocketType,
+};
 use crate::endpoint::Endpoint;
 use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::FairQueue;
 use crate::message::*;
 use crate::transport::AcceptStopHandle;
-use crate::util::PeerIdentity;
-use crate::{MultiPeerBackend, SocketEvent, SocketOptions, SocketRecv, SocketSend, SocketType};
-use crate::{Socket, SocketBackend};
+
+use async_trait::async_trait;
 use futures::channel::mpsc;
+use futures::stream::StreamExt;
 use futures::SinkExt;
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::sync::Arc;
 
 pub struct RouterSocket {
     backend: Arc<GenericSocketBackend>,
@@ -82,10 +83,10 @@ impl SocketRecv for RouterSocket {
 impl SocketSend for RouterSocket {
     async fn send(&mut self, mut message: ZmqMessage) -> ZmqResult<()> {
         assert!(message.len() > 1);
-        let peer_id: PeerIdentity = message.pop_front().unwrap().to_vec().try_into()?;
+        let peer_id: PeerIdentity = message.pop_front().unwrap().try_into()?;
         match self.backend.peers.get_mut(&peer_id) {
             Some(mut peer) => {
-                peer.send_queue.send(Message::Message(message)).await?;
+                peer.send(Message::Message(message)).await?;
                 Ok(())
             }
             None => Err(ZmqError::Other("Destination client not found by identity")),

@@ -8,20 +8,22 @@ license = "MIT"
 repository = "https://github.com/zeromq/zmq.rs"
 
 [features]
-default = ["tokio-runtime", "all-transport"]
+default = ["tokio-runtime", "all-transport", "curvezmq"]
 tokio-runtime = ["tokio", "tokio-util"]
 async-std-runtime = ["async-std"]
 all-transport = ["ipc-transport", "tcp-transport"]
 ipc-transport = []
 tcp-transport = []
+curvezmq = ["crypto_box"]
 
 [dependencies]
 thiserror = "1"
 futures = "0.3"
 futures-util = "0.3"
+pin-project-lite = "0.2"
 async-trait = "0.1"
 parking_lot = "0.11"
-rand = "0.7"
+rand = "0.8"
 bytes = "1"
 tokio = { version = "1", features = ["full"], optional = true }
 tokio-util = { version = "0.6", features = ["compat"], optional = true }
@@ -35,6 +37,7 @@ lazy_static = "1"
 log = "0.4"
 asynchronous-codec = "0.6"
 async-std = { version = "1", features = ["attributes"], optional = true }
+crypto_box = { version = "0.7.2", optional = true }
 
 [dev-dependencies]
 chrono = "0.4"

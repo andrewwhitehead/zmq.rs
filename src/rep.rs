@@ -1,25 +1,25 @@
-use crate::codec::*;
+use crate::codec::{FramedIo, Message, ZmqFramedRead, ZmqFramedWrite};
+use crate::connection::{
+    MultiPeerBackend, PeerIdentity, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv,
+    SocketSend, SocketType,
+};
 use crate::endpoint::Endpoint;
-use crate::error::*;
+use crate::error::{ZmqError, ZmqResult};
 use crate::fair_queue::{FairQueue, QueueInner};
+use crate::message::ZmqMessage;
 use crate::transport::AcceptStopHandle;
-use crate::*;
-use crate::{SocketType, ZmqResult};
+
 use async_trait::async_trait;
 use dashmap::DashMap;
+use futures::channel::mpsc;
 use futures::SinkExt;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-struct RepPeer {
-    pub(crate) _identity: PeerIdentity,
-    pub(crate) send_queue: ZmqFramedWrite,
-}
-
 struct RepSocketBackend {
-    pub(crate) peers: DashMap<PeerIdentity, RepPeer>,
+    pub(crate) peers: DashMap<PeerIdentity, ZmqFramedWrite>,
     fair_queue_inner: Arc<Mutex<QueueInner<ZmqFramedRead, PeerIdentity>>>,
     socket_monitor: Mutex<Option<mpsc::Sender<SocketEvent>>>,
     socket_options: SocketOptions,
@@ -77,13 +77,7 @@ impl MultiPeerBackend for RepSocketBackend {
     async fn peer_connected(self: Arc<Self>, peer_id: &PeerIdentity, io: FramedIo) {
         let (recv_queue, send_queue) = io.into_parts();
 
-        self.peers.insert(
-            peer_id.clone(),
-            RepPeer {
-                _identity: peer_id.clone(),
-                send_queue,
-            },
-        );
+        self.peers.insert(peer_id.clone(), send_queue);
         self.fair_queue_inner
             .lock()
             .insert(peer_id.clone(), recv_queue);
@@ -124,7 +118,7 @@ impl SocketSend for RepSocket {
                     if let Some(envelope) = self.envelope.take() {
                         message.prepend(&envelope);
                     }
-                    peer.send_queue.send(Message::Message(message)).await?;
+                    peer.send(Message::Message(message)).await?;
                     Ok(())
                 } else {
                     Err(ZmqError::ReturnToSender {

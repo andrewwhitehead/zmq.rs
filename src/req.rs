@@ -1,21 +1,25 @@
-use crate::codec::*;
+use crate::codec::{FramedIo, Message};
+use crate::connection::{
+    peer::PeerConnection, MultiPeerBackend, PeerIdentity, Socket, SocketBackend, SocketEvent,
+    SocketOptions, SocketRecv, SocketSend, SocketType,
+};
 use crate::endpoint::Endpoint;
-use crate::error::*;
+use crate::error::{ZmqError, ZmqResult};
+use crate::message::ZmqMessage;
 use crate::transport::AcceptStopHandle;
-use crate::util::{Peer, PeerIdentity};
-use crate::*;
-use crate::{SocketType, ZmqResult};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
+use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 struct ReqSocketBackend {
-    pub(crate) peers: DashMap<PeerIdentity, Peer>,
+    pub(crate) peers: DashMap<PeerIdentity, PeerConnection>,
     pub(crate) round_robin: SegQueue<PeerIdentity>,
     socket_monitor: Mutex<Option<mpsc::Sender<SocketEvent>>>,
     socket_options: SocketOptions,
@@ -84,6 +88,7 @@ impl SocketRecv for ReqSocket {
                             assert!(m.pop_front().unwrap().is_empty()); // Ensure that we have delimeter as first part
                             Ok(m)
                         }
+                        Some(Err(err)) => Err(err.into()),
                         Some(_) => todo!(),
                         None => Err(ZmqError::NoMessage),
                     }
@@ -132,8 +137,7 @@ impl MultiPeerBackend for ReqSocketBackend {
         let (recv_queue, send_queue) = io.into_parts();
         self.peers.insert(
             peer_id.clone(),
-            Peer {
-                _identity: peer_id.clone(),
+            PeerConnection {
                 send_queue,
                 recv_queue,
             },

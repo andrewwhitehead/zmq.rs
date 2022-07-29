@@ -4,28 +4,37 @@ use tokio::net::{UnixListener, UnixStream};
 #[cfg(feature = "async-std-runtime")]
 use async_std::os::unix::net::{UnixListener, UnixStream};
 
-use super::make_framed;
+use super::init_socket;
 use super::AcceptStopHandle;
 use crate::async_rt;
+use crate::auth::AuthMethod;
 use crate::codec::FramedIo;
+use crate::codec::ZmqMetadata;
 use crate::endpoint::Endpoint;
 use crate::task_handle::TaskHandle;
 use crate::ZmqResult;
 
 use futures::{select, FutureExt};
 use std::path::Path;
+use std::sync::Arc;
 
-pub(crate) async fn connect(path: &Path) -> ZmqResult<(FramedIo, Endpoint)> {
+pub(crate) async fn connect(
+    path: &Path,
+    auth: &AuthMethod,
+    metadata: &ZmqMetadata,
+) -> ZmqResult<(FramedIo, ZmqMetadata, Endpoint)> {
     let raw_socket = UnixStream::connect(path).await?;
     let peer_addr = raw_socket.peer_addr()?;
     let peer_addr = peer_addr.as_pathname().map(|a| a.to_owned());
-
-    Ok((make_framed(raw_socket), Endpoint::Ipc(peer_addr)))
+    let (framed, recv_meta) = init_socket(raw_socket, auth, metadata).await?;
+    Ok((framed, recv_meta, Endpoint::Ipc(peer_addr)))
 }
 
 pub(crate) async fn begin_accept<T>(
     path: &Path,
-    cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
+    auth: Arc<AuthMethod>,
+    metadata: ZmqMetadata,
+    cback: impl Fn(ZmqResult<(FramedIo, ZmqMetadata, Endpoint)>) -> T + Send + 'static,
 ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
 where
     T: std::future::Future<Output = ()> + Send + 'static,
@@ -49,10 +58,14 @@ where
         loop {
             select! {
                 incoming = listener.accept().fuse() => {
-                    let maybe_accepted: Result<_, _> = incoming.map(|(raw_socket, peer_addr)| {
-                        let peer_addr = peer_addr.as_pathname().map(|a| a.to_owned());
-                        (make_framed(raw_socket), Endpoint::Ipc(peer_addr))
-                    }).map_err(|err| err.into());
+                    let maybe_accepted = match incoming {
+                        Ok((raw_socket, peer_addr)) => {
+                            let peer_addr = peer_addr.as_pathname().map(|a| a.to_owned());
+                            let (framed, recv_meta) = init_socket(raw_socket, &auth, &metadata).await?;
+                            Ok((framed, recv_meta, Endpoint::Ipc(peer_addr)))
+                        },
+                        Err(e) => Err(e.into())
+                    };
                     async_rt::task::spawn(cback(maybe_accepted));
                 },
                 _ = stop_callback => {

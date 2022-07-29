@@ -1,12 +1,15 @@
 use crate::backend::GenericSocketBackend;
 use crate::codec::{Message, ZmqFramedRead};
-use crate::fair_queue::FairQueue;
-use crate::transport::AcceptStopHandle;
-use crate::util::PeerIdentity;
-use crate::{
-    CaptureSocket, Endpoint, MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions,
-    SocketRecv, SocketSend, SocketType, ZmqMessage, ZmqResult,
+use crate::connection::{
+    CaptureSocket, MultiPeerBackend, PeerIdentity, Socket, SocketBackend, SocketEvent,
+    SocketOptions, SocketRecv, SocketSend, SocketType,
 };
+use crate::endpoint::Endpoint;
+use crate::error::ZmqResult;
+use crate::fair_queue::FairQueue;
+use crate::message::ZmqMessage;
+use crate::transport::AcceptStopHandle;
+
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -74,9 +77,7 @@ impl SocketRecv for DealerSocket {
 #[async_trait]
 impl SocketSend for DealerSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
-        self.backend
-            .send_round_robin(Message::Message(message))
-            .await?;
+        self.backend.send_round_robin(message).await?;
         Ok(())
     }
 }

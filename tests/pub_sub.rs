@@ -97,8 +97,8 @@ async fn test_pub_sub_sockets() {
         "tcp://localhost:0",
         "tcp://127.0.0.1:0",
         "tcp://[::1]:0",
-        "ipc://asdf.sock",
-        "ipc://anothersocket-asdf",
+        "ipc://pub-sub-test.sock",
+        "ipc://pub-sub-test2.sock",
     ];
     futures::future::join_all(addrs.into_iter().map(helper)).await;
 }

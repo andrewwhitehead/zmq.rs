@@ -4,11 +4,12 @@ use std::convert::TryFrom;
 use std::fmt::Display;
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ZmqMechanism {
     NULL,
     PLAIN,
     CURVE,
+    GSSAPI,
 }
 
 impl Default for ZmqMechanism {
@@ -23,6 +24,7 @@ impl ZmqMechanism {
             ZmqMechanism::NULL => "NULL",
             ZmqMechanism::PLAIN => "PLAIN",
             ZmqMechanism::CURVE => "CURVE",
+            ZmqMechanism::GSSAPI => "GSSAPI",
         }
     }
 }
@@ -45,6 +47,7 @@ impl TryFrom<&[u8]> for ZmqMechanism {
             b"NULL" => Ok(ZmqMechanism::NULL),
             b"PLAIN" => Ok(ZmqMechanism::PLAIN),
             b"CURVE" => Ok(ZmqMechanism::CURVE),
+            b"GSSAPI" => Ok(ZmqMechanism::GSSAPI),
             _ => Err(CodecError::Mechanism("Failed to parse ZmqMechanism")),
         }
     }

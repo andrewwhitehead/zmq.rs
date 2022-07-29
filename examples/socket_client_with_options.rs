@@ -2,13 +2,12 @@ mod async_helpers;
 
 use std::convert::TryFrom;
 use std::error::Error;
-use zeromq::util::PeerIdentity;
-use zeromq::{Socket, SocketOptions, SocketRecv, SocketSend};
+use zeromq::{PeerIdentity, Socket, SocketOptions, SocketRecv, SocketSend};
 
 #[async_helpers::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let mut options = SocketOptions::default();
-    options.peer_identity(PeerIdentity::try_from(Vec::from("SomeCustomId")).unwrap());
+    options.peer_identity(PeerIdentity::try_from("SomeCustomId").unwrap());
 
     let mut socket = zeromq::ReqSocket::with_options(options);
     socket

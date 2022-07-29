@@ -1,16 +1,15 @@
-use crate::codec::*;
+use crate::codec::{FramedIo, Message, ZmqFramedRead, ZmqFramedWrite};
+use crate::connection::{
+    MultiPeerBackend, PeerIdentity, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv,
+    SocketType,
+};
 use crate::endpoint::Endpoint;
 use crate::error::ZmqResult;
-use crate::message::*;
-use crate::transport::AcceptStopHandle;
-use crate::util::PeerIdentity;
-use crate::{
-    MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions, SocketRecv, SocketType,
-};
-
-use crate::backend::Peer;
 use crate::fair_queue::FairQueue;
 use crate::fair_queue::QueueInner;
+use crate::message::*;
+use crate::transport::AcceptStopHandle;
+
 use async_trait::async_trait;
 use bytes::{BufMut, BytesMut};
 use crossbeam::queue::SegQueue;
@@ -27,7 +26,7 @@ pub enum SubBackendMsgType {
 }
 
 pub(crate) struct SubSocketBackend {
-    pub(crate) peers: DashMap<PeerIdentity, Peer>,
+    pub(crate) peers: DashMap<PeerIdentity, ZmqFramedWrite>,
     fair_queue_inner: Option<Arc<Mutex<QueueInner<ZmqFramedRead, PeerIdentity>>>>,
     pub(crate) round_robin: SegQueue<PeerIdentity>,
     socket_type: SocketType,
@@ -96,7 +95,7 @@ impl MultiPeerBackend for SubSocketBackend {
             send_queue.send(Message::Message(message)).await.unwrap();
         }
 
-        self.peers.insert(peer_id.clone(), Peer { send_queue });
+        self.peers.insert(peer_id.clone(), send_queue);
         self.round_robin.push(peer_id.clone());
         match &self.fair_queue_inner {
             None => {}
@@ -144,9 +143,7 @@ impl SubSocket {
         let message: ZmqMessage = SubSocketBackend::create_subs_message(subscription, msg_type);
 
         for mut peer in self.backend.peers.iter_mut() {
-            peer.send_queue
-                .send(Message::Message(message.clone()))
-                .await?;
+            peer.send(Message::Message(message.clone())).await?;
         }
         Ok(())
     }

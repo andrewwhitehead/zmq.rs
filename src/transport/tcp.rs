@@ -4,31 +4,40 @@ use tokio::net::{TcpListener, TcpStream};
 #[cfg(feature = "async-std-runtime")]
 use async_std::net::{TcpListener, TcpStream};
 
-use super::make_framed;
+use super::init_socket;
 use super::AcceptStopHandle;
 use crate::async_rt;
-use crate::codec::FramedIo;
+use crate::auth::AuthMethod;
+use crate::codec::{FramedIo, ZmqMetadata};
 use crate::endpoint::{Endpoint, Host, Port};
 use crate::task_handle::TaskHandle;
 use crate::ZmqResult;
 
 use futures::{select, FutureExt};
+use std::sync::Arc;
 
-pub(crate) async fn connect(host: &Host, port: Port) -> ZmqResult<(FramedIo, Endpoint)> {
+pub(crate) async fn connect(
+    host: &Host,
+    port: Port,
+    auth: &AuthMethod,
+    metadata: &ZmqMetadata,
+) -> ZmqResult<(FramedIo, ZmqMetadata, Endpoint)> {
     let raw_socket = TcpStream::connect((host.to_string().as_str(), port)).await?;
     // For some reason set_nodelay doesn't work on windows. See
     // https://github.com/zeromq/zmq.rs/issues/148 for details
     #[cfg(not(windows))]
     raw_socket.set_nodelay(true)?;
     let peer_addr = raw_socket.peer_addr()?;
-
-    Ok((make_framed(raw_socket), Endpoint::from_tcp_addr(peer_addr)))
+    let (framed, recv_meta) = init_socket(raw_socket, auth, metadata).await?;
+    Ok((framed, recv_meta, Endpoint::from_tcp_addr(peer_addr)))
 }
 
 pub(crate) async fn begin_accept<T>(
     mut host: Host,
     port: Port,
-    cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
+    auth: Arc<AuthMethod>,
+    metadata: ZmqMetadata,
+    cback: impl Fn(ZmqResult<(FramedIo, ZmqMetadata, Endpoint)>) -> T + Send + 'static,
 ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
 where
     T: std::future::Future<Output = ()> + Send + 'static,
@@ -41,13 +50,14 @@ where
         loop {
             select! {
                 incoming = listener.accept().fuse() => {
-                    let maybe_accepted: Result<_, _> = incoming.and_then(|(raw_socket, remote_addr)|{
-                        raw_socket.set_nodelay(true).map(|_| {
-                            (raw_socket, remote_addr)
-                        })
-                    }).map(|(raw_socket, remote_addr)| {
-                        (make_framed(raw_socket), Endpoint::from_tcp_addr(remote_addr))
-                    }).map_err(|err| err.into());
+                    let maybe_accepted = match incoming {
+                        Ok((raw_socket, remote_addr)) => {
+                            raw_socket.set_nodelay(true)?;
+                            let (framed, recv_meta) = init_socket(raw_socket, &auth, &metadata).await?;
+                            Ok((framed, recv_meta, Endpoint::from_tcp_addr(remote_addr)))
+                        },
+                        Err(e) => Err(e.into())
+                    };
                     async_rt::task::spawn(cback(maybe_accepted));
                 },
                 _ = stop_callback => {

@@ -3,10 +3,14 @@ mod ipc;
 #[cfg(feature = "tcp-transport")]
 mod tcp;
 
-use crate::codec::FramedIo;
+use std::future::Future;
+use std::sync::Arc;
+
+use crate::codec::{CodecError, FramedIo, ZmqMetadata};
 use crate::endpoint::Endpoint;
+use crate::handshake::perform_handshake;
 use crate::task_handle::TaskHandle;
-use crate::ZmqResult;
+use crate::{AuthMethod, ZmqResult};
 
 macro_rules! do_if_enabled {
     ($feature:literal, $body:expr) => {{
@@ -20,19 +24,26 @@ macro_rules! do_if_enabled {
     }};
 }
 
-/// Connectes to the given endpoint
+/// Connects to the given endpoint
 ///
 /// # Panics
 /// Panics if the requested endpoint uses a transport type that isn't enabled
-pub(crate) async fn connect(endpoint: &Endpoint) -> ZmqResult<(FramedIo, Endpoint)> {
+pub(crate) async fn connect(
+    endpoint: &Endpoint,
+    auth: &AuthMethod,
+    metadata: &ZmqMetadata,
+) -> ZmqResult<(FramedIo, ZmqMetadata, Endpoint)> {
     match endpoint {
-        Endpoint::Tcp(_host, _port) => {
-            do_if_enabled!("tcp-transport", tcp::connect(_host, *_port).await)
+        Endpoint::Tcp(host, port) => {
+            do_if_enabled!(
+                "tcp-transport",
+                tcp::connect(host, *port, auth, metadata).await
+            )
         }
-        Endpoint::Ipc(_path) => do_if_enabled!(
+        Endpoint::Ipc(path) => do_if_enabled!(
             "ipc-transport",
-            if let Some(path) = _path {
-                ipc::connect(path).await
+            if let Some(path) = path {
+                ipc::connect(path, auth, metadata).await
             } else {
                 Err(crate::error::ZmqError::Socket(
                     "Cannot connect to an unnamed ipc socket",
@@ -57,21 +68,24 @@ pub struct AcceptStopHandle(pub(crate) TaskHandle<()>);
 /// Panics if the requested endpoint uses a transport type that isn't enabled
 pub(crate) async fn begin_accept<T>(
     endpoint: Endpoint,
-    cback: impl Fn(ZmqResult<(FramedIo, Endpoint)>) -> T + Send + 'static,
+    auth: Arc<AuthMethod>,
+    metadata: ZmqMetadata,
+    cback: impl Fn(ZmqResult<(FramedIo, ZmqMetadata, Endpoint)>) -> T + Send + 'static,
 ) -> ZmqResult<(Endpoint, AcceptStopHandle)>
 where
     T: std::future::Future<Output = ()> + Send + 'static,
 {
-    let _cback = cback;
     match endpoint {
-        Endpoint::Tcp(_host, _port) => do_if_enabled!(
-            "tcp-transport",
-            tcp::begin_accept(_host, _port, _cback).await
-        ),
+        Endpoint::Tcp(host, port) => {
+            do_if_enabled!(
+                "tcp-transport",
+                tcp::begin_accept(host, port, auth, metadata, cback).await
+            )
+        }
         Endpoint::Ipc(_path) => do_if_enabled!(
             "ipc-transport",
             if let Some(path) = _path {
-                ipc::begin_accept(&path, _cback).await
+                ipc::begin_accept(&path, auth, metadata, cback).await
             } else {
                 Err(crate::error::ZmqError::Socket(
                     "Cannot begin accepting peers at an unnamed ipc socket",
@@ -81,24 +95,38 @@ where
     }
 }
 
-#[allow(unused)]
-#[cfg(feature = "tokio-runtime")]
-fn make_framed<T>(stream: T) -> FramedIo
-where
-    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Sync + 'static,
-{
-    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-    let (read, write) = tokio::io::split(stream);
-    FramedIo::new(Box::new(read.compat()), Box::new(write.compat_write()))
-}
-
-#[allow(unused)]
-#[cfg(feature = "async-std-runtime")]
-fn make_framed<T>(stream: T) -> FramedIo
+async fn _init_socket<T>(
+    stream: T,
+    auth: &AuthMethod,
+    metadata: &ZmqMetadata,
+) -> Result<(FramedIo, ZmqMetadata), CodecError>
 where
     T: futures::AsyncRead + futures::AsyncWrite + Send + Sync + 'static,
 {
-    use futures::AsyncReadExt;
-    let (read, write) = stream.split();
-    FramedIo::new(Box::new(read), Box::new(write))
+    perform_handshake(stream, auth, metadata).await
+}
+
+#[cfg(feature = "tokio-runtime")]
+fn init_socket<'a, T>(
+    stream: T,
+    auth: &'a AuthMethod,
+    metadata: &'a ZmqMetadata,
+) -> impl Future<Output = Result<(FramedIo, ZmqMetadata), CodecError>> + 'a
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Sync + 'static,
+{
+    use tokio_util::compat::TokioAsyncReadCompatExt;
+    _init_socket(stream.compat(), auth, metadata)
+}
+
+#[cfg(feature = "async-std-runtime")]
+fn init_socket<T>(
+    stream: T,
+    auth: &AuthMethod,
+    metadata: ZmqMetadata,
+) -> impl Future<Output = ZmqResult<FramedIo>> + '_
+where
+    T: futures::AsyncRead + futures::AsyncWrite + Send + Sync + 'static,
+{
+    _init_socket(stream, auth, metadata)
 }

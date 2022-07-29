@@ -1,10 +1,13 @@
 use crate::backend::GenericSocketBackend;
-use crate::codec::Message;
-use crate::transport::AcceptStopHandle;
-use crate::{
-    CaptureSocket, Endpoint, MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions,
-    SocketSend, SocketType, ZmqMessage, ZmqResult,
+use crate::connection::{
+    CaptureSocket, MultiPeerBackend, Socket, SocketBackend, SocketEvent, SocketOptions, SocketSend,
+    SocketType,
 };
+use crate::endpoint::Endpoint;
+use crate::error::ZmqResult;
+use crate::message::ZmqMessage;
+use crate::transport::AcceptStopHandle;
+
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use std::collections::hash_map::RandomState;
@@ -53,9 +56,7 @@ impl Socket for PushSocket {
 #[async_trait]
 impl SocketSend for PushSocket {
     async fn send(&mut self, message: ZmqMessage) -> ZmqResult<()> {
-        self.backend
-            .send_round_robin(Message::Message(message))
-            .await?;
+        self.backend.send_round_robin(message).await?;
         Ok(())
     }
 }

@@ -125,15 +125,15 @@ pub trait TryIntoEndpoint: Send + private::Sealed {
     ///
     /// Enables efficient `Endpoint` -> `Endpoint` conversion, while permitting
     /// the creation of a new `Endpoint` when given types like `&str`.
-    fn try_into(self) -> Result<Endpoint, EndpointError>;
+    fn try_into_endpoint(self) -> Result<Endpoint, EndpointError>;
 }
 impl TryIntoEndpoint for &str {
-    fn try_into(self) -> Result<Endpoint, EndpointError> {
+    fn try_into_endpoint(self) -> Result<Endpoint, EndpointError> {
         self.parse()
     }
 }
 impl TryIntoEndpoint for Endpoint {
-    fn try_into(self) -> Result<Endpoint, EndpointError> {
+    fn try_into_endpoint(self) -> Result<Endpoint, EndpointError> {
         Ok(self)
     }
 }
