@@ -1,5 +1,5 @@
-use futures::task::{ArcWake, Context, Poll, Waker};
-use futures::Stream;
+use futures_util::task::{ArcWake, Context, Poll, Waker};
+use futures_util::Stream;
 use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
@@ -115,7 +115,7 @@ where
                 inner: fair_queue.inner.clone(),
                 event: event.clone(),
             });
-            let waker_ref = futures::task::waker_ref(&waker);
+            let waker_ref = futures_util::task::waker_ref(&waker);
             let mut cx = Context::from_waker(&waker_ref);
             match io_stream.as_mut().poll_next(&mut cx) {
                 Poll::Ready(Some(res)) => {
@@ -162,13 +162,13 @@ impl<S, K: Clone> FairQueue<S, K> {
 mod test {
     use crate::async_rt;
     use crate::fair_queue::FairQueue;
-    use futures::StreamExt;
+    use futures_util::StreamExt;
 
     #[async_rt::test]
     async fn test_fair_queue_ready() {
-        let a = futures::stream::iter(vec!["a1", "a2", "a3"]);
-        let b = futures::stream::iter(vec!["b1", "b2", "b3"]);
-        let c = futures::stream::iter(vec!["c1", "c2", "c3"]);
+        let a = futures_util::stream::iter(vec!["a1", "a2", "a3"]);
+        let b = futures_util::stream::iter(vec!["b1", "b2", "b3"]);
+        let c = futures_util::stream::iter(vec!["c1", "c2", "c3"]);
 
         let mut f_queue: FairQueue<_, u64> = FairQueue::new(false);
         {
@@ -201,9 +201,9 @@ mod test {
 
     #[async_rt::test]
     async fn test_fair_queue_different_size() {
-        let a = futures::stream::iter(vec!["a1", "a2", "a3"]);
-        let b = futures::stream::iter(vec!["b1"]);
-        let c = futures::stream::iter(vec!["c1", "c2"]);
+        let a = futures_util::stream::iter(vec!["a1", "a2", "a3"]);
+        let b = futures_util::stream::iter(vec!["b1"]);
+        let c = futures_util::stream::iter(vec!["c1", "c2"]);
 
         let mut f_queue: FairQueue<_, u64> = FairQueue::new(false);
         {

@@ -46,14 +46,14 @@ pub enum ZmqError {
     UnsupportedVersion(ZmtpVersion),
 }
 
-impl From<futures::channel::mpsc::TrySendError<Message>> for ZmqError {
-    fn from(_: futures::channel::mpsc::TrySendError<Message>) -> Self {
+impl From<futures_channel::mpsc::TrySendError<Message>> for ZmqError {
+    fn from(_: futures_channel::mpsc::TrySendError<Message>) -> Self {
         ZmqError::BufferFull("Failed to send message. Send queue full/broken")
     }
 }
 
-impl From<futures::channel::mpsc::SendError> for ZmqError {
-    fn from(_: futures::channel::mpsc::SendError) -> Self {
+impl From<futures_channel::mpsc::SendError> for ZmqError {
+    fn from(_: futures_channel::mpsc::SendError) -> Self {
         ZmqError::BufferFull("Failed to send message. Send queue full/broken")
     }
 }
